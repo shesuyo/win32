@@ -17,6 +17,7 @@ var (
 	getWindowTextW     = user32.NewProc("GetWindowTextW")
 	getWindowTextA     = user32.NewProc("GetWindowTextA")
 	getClientRect      = user32.NewProc("GetClientRect")
+	setWindowPos       = user32.NewProc("SetWindowPos")
 )
 
 var (
@@ -157,6 +158,52 @@ func PostMessageW(hwnd, key, wparam, lparam uintptr) uintptr {
 		key,
 		wparam,
 		lparam,
+	)
+	return ret
+}
+
+/*
+hwnd HWND，欲定位的窗口句柄
+　　hWndInsertAfter HWND，置于hwnd前面的窗口句柄。这个参数必须是窗口的句柄或是下面的值之一：
+　  HWND_BOTTOM 将窗口置于其它所有窗口的底部
+　　HWND_NOTOPMOST 将窗口置于其它所有窗口的顶部，并位于任何最顶部窗口的后面。如果这个窗口非顶部窗口，这个标记对该窗口并不产生影响
+　　HWND_TOP 将窗口置于它所有窗口的顶部
+　　HWND_TOPMOST 将窗口置于其它所有窗口的顶部，并位于任何最顶部窗口的前面。即使这个窗口不是活动窗口，也维持最顶部状态
+x：
+
+　　int，指定窗口新的X坐标
+Y：
+　　int，指定窗口新的Y坐标
+cx：
+　　int，指定窗口新的宽度
+cy：
+　　int，指定窗口新的高度
+wFlags：
+　　UINT，指定窗口状态和位置的标记。这个参数使用下面值的组合： SWP_DRAWFRAME 围绕窗口画一个框
+　　SWP_FRAMECHANGED 发送一条WM_NCCALCSIZE消息进入窗口，即使窗口的大小没有发生改变。如果不指定这个参数，消息WM_NCCALCSIZE只有在窗口大小发生改变时才发送
+　　SWP_HIDEWINDOW 隐藏窗口
+　　SWP_NOACTIVATE 不激活窗口
+　　SWP_NOCOPYBITS 屏蔽客户区域
+　　SWP_NOMOVE 保持当前位置（X和Y参数将被忽略）
+　　SWP_NOOWNERZORDER 不改变所有窗口的位置和排列顺序
+　　SWP_NOREDRAW 窗口不自动重画
+　　SWP_NOREPOSITION 与SWP_NOOWNERZORDER标记相同
+　　SWP_NOSENDCHANGING 防止这个窗口接受WM_WINDOWPOSCHANGING消息
+　　SWP_NOSIZE 保持当前大小（cx和cy会被忽略）
+　　SWP_NOZORDER 保持窗口在列表的当前位置（hWndInsertAfter将被忽略）
+　　SWP_SHOWWINDOW 显示窗口
+	可以 　　SWP_NOMOVE ||
+*/
+// https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setwindowpos
+func SetWindowPos(hwnd, hWndInsertAfter uintptr, x, y, cx, cy, uFlags int) uintptr {
+	ret, _, _ := setWindowPos.Call(
+		hwnd,
+		hWndInsertAfter,
+		uintptr(x),
+		uintptr(y),
+		uintptr(cx),
+		uintptr(cy),
+		uintptr(uFlags),
 	)
 	return ret
 }
