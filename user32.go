@@ -29,11 +29,25 @@ var (
 	bitBlt                 = gdi32.NewProc("BitBlt")
 	getBitmapBits          = gdi32.NewProc("GetBitmapBits")
 	deleteObject           = gdi32.NewProc("DeleteObject")
+	setStretchBltMode      = gdi32.NewProc("SetStretchBltMode")
+	getDIBits              = gdi32.NewProc("GetDIBits")
+	getObject              = gdi32.NewProc("GetObjectW")
+)
+
+var (
+	kernel32 = syscall.NewLazyDLL("Kernel32.dll")
+
+	getLastError = kernel32.NewProc("GetLastError")
 )
 
 func str(s string) *uint16 {
 	p, _ := syscall.UTF16PtrFromString(s)
 	return p
+}
+
+func GetLastError() uintptr {
+	ret, _, _ := getLastError.Call()
+	return ret
 }
 
 // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-findwindoww
@@ -137,6 +151,21 @@ func GetBitmapBits(bitmap uintptr, bytesLen int) []byte {
 	return buffer
 }
 
+// https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getdibits
+// https://docs.microsoft.com/en-us/windows/win32/gdi/capturing-an-image
+func GetDIBits(hdc, hmb, start, cLines, lpvBits, lpbmi, usage uintptr) uintptr {
+	ret, _, _ := getDIBits.Call(
+		hdc,
+		hmb,
+		start,
+		cLines,
+		lpvBits,
+		lpbmi,
+		usage,
+	)
+	return ret
+}
+
 func DeleteObject(hwnd uintptr) {
 	deleteObject.Call(hwnd)
 }
@@ -206,4 +235,16 @@ func SetWindowPos(hwnd, hWndInsertAfter uintptr, x, y, cx, cy, uFlags int) uintp
 		uintptr(uFlags),
 	)
 	return ret
+}
+
+func SetStretchBltMode(hdcWindow, HALFTONE uintptr) {
+	setStretchBltMode.Call(hdcWindow, HALFTONE)
+}
+
+func GetObject(h, c, pv uintptr) {
+	getObject.Call(
+		h,
+		c,
+		pv,
+	)
 }
