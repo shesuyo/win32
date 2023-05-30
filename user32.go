@@ -8,16 +8,18 @@ import (
 var (
 	user32 = syscall.NewLazyDLL("User32.dll")
 
-	findWindowW        = user32.NewProc("FindWindowW")
-	enumChildWindows   = user32.NewProc("EnumChildWindows")
-	setProcessDPIAware = user32.NewProc("SetProcessDPIAware")
-	getDC              = user32.NewProc("GetDC")
-	releaseDC          = user32.NewProc("ReleaseDC")
-	postMessageW       = user32.NewProc("PostMessageW")
-	getWindowTextW     = user32.NewProc("GetWindowTextW")
-	getWindowTextA     = user32.NewProc("GetWindowTextA")
-	getClientRect      = user32.NewProc("GetClientRect")
-	setWindowPos       = user32.NewProc("SetWindowPos")
+	findWindowW              = user32.NewProc("FindWindowW")
+	enumWindows              = user32.NewProc("EnumWindows")
+	enumChildWindows         = user32.NewProc("EnumChildWindows")
+	setProcessDPIAware       = user32.NewProc("SetProcessDPIAware")
+	getDC                    = user32.NewProc("GetDC")
+	releaseDC                = user32.NewProc("ReleaseDC")
+	postMessageW             = user32.NewProc("PostMessageW")
+	getWindowTextW           = user32.NewProc("GetWindowTextW")
+	getWindowTextA           = user32.NewProc("GetWindowTextA")
+	getClientRect            = user32.NewProc("GetClientRect")
+	setWindowPos             = user32.NewProc("SetWindowPos")
+	getWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
 )
 
 var (
@@ -77,11 +79,26 @@ func GetWindowTextA(hwnd uintptr) string {
 	return string(str[:ret])
 }
 
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winuser/nf-winuser-enumwindows
+func EnumWindows(f func(hwnd uintptr, lParam uintptr) uintptr) bool {
+	ret, _, _ := enumWindows.Call(syscall.NewCallback(f), 77)
+	return ret == 1
+}
+
 // type EnumChildWindowsCallbackFunc(hwnd uintptr, lParam uintptr) uintptr
 
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winuser/nf-winuser-enumchildwindows
 func EnumChildWindows(hwnd uintptr, f func(hwnd uintptr, lParam uintptr) uintptr) {
-	enumChildWindows.Call(hwnd, syscall.NewCallback(f), 200)
+	enumChildWindows.Call(hwnd, syscall.NewCallback(f), 77)
 }
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winuser/nf-winuser-getwindowthreadprocessid
+func GetWindowThreadProcessId(hwnd uintptr) uint32 {
+	ret, _, _ := getWindowThreadProcessId.Call(hwnd)
+	return uint32(ret)
+}
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/psapi/nf-psapi-enumprocesses
 
 type long = int32
 
