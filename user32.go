@@ -20,37 +20,8 @@ var (
 	getClientRect            = user32.NewProc("GetClientRect")
 	setWindowPos             = user32.NewProc("SetWindowPos")
 	getWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
+	getWindowLongPtrW        = user32.NewProc("GetWindowLongPtrW")
 )
-
-var (
-	gdi32 = syscall.NewLazyDLL("Gdi32.dll")
-
-	createCompatibleDC     = gdi32.NewProc("CreateCompatibleDC")
-	createCompatibleBitmap = gdi32.NewProc("CreateCompatibleBitmap")
-	selectObject           = gdi32.NewProc("SelectObject")
-	bitBlt                 = gdi32.NewProc("BitBlt")
-	getBitmapBits          = gdi32.NewProc("GetBitmapBits")
-	deleteObject           = gdi32.NewProc("DeleteObject")
-	setStretchBltMode      = gdi32.NewProc("SetStretchBltMode")
-	getDIBits              = gdi32.NewProc("GetDIBits")
-	getObject              = gdi32.NewProc("GetObjectW")
-)
-
-var (
-	kernel32 = syscall.NewLazyDLL("Kernel32.dll")
-
-	getLastError = kernel32.NewProc("GetLastError")
-)
-
-func str(s string) *uint16 {
-	p, _ := syscall.UTF16PtrFromString(s)
-	return p
-}
-
-func GetLastError() uintptr {
-	ret, _, _ := getLastError.Call()
-	return ret
-}
 
 // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-findwindoww
 func FindWindowW(lpClassName, lpWindowName string) uintptr {
@@ -66,10 +37,10 @@ func FindWindowW(lpClassName, lpWindowName string) uintptr {
 }
 
 // return like T h e R e n d e r
-func GetWindowTextW(hwnd uintptr) string {
+func GetWindowTextW(hwnd uintptr) WideChar {
 	str := make([]byte, 200)
-	getWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&str[0])), 200)
-	return string(str)
+	l, _, _ := getWindowTextW.Call(hwnd, uintptr(unsafe.Pointer(&str[0])), 200)
+	return WideChar(str[:l*2])
 }
 
 // return like TheRender
@@ -123,69 +94,14 @@ func GetDC(hwnd uintptr) uintptr {
 	return ret
 }
 
-func CreateCompatibleDC(dc uintptr) uintptr {
-	cdc, _, _ := createCompatibleDC.Call(dc)
-	return cdc
-}
-
-func CreateCompatibleBitmap(dc uintptr, width, height long) uintptr {
-	bitmap, _, _ := createCompatibleBitmap.Call(
-		dc,
-		uintptr(width),
-		uintptr(height),
-	)
-	return bitmap
-}
-
-func SelectObject(cdc, bitmap uintptr) {
-	selectObject.Call(cdc, bitmap)
-}
-
 const SRCCOPY = 0x00CC0020
 
-func BitBlt(cdc, dc, action uintptr, width, height long) {
-	bitBlt.Call(
-		cdc,
-		0,
-		0,
-		uintptr(width),
-		uintptr(height),
-		dc,
-		0,
-		0,
-		action,
-	)
-}
+const INVALID_HANDLE_VALUE = -1
 
-func GetBitmapBits(bitmap uintptr, bytesLen int) []byte {
-	// 存储顺序为BGRA
-	buffer := make([]byte, bytesLen)
-	getBitmapBits.Call(
-		bitmap,
-		uintptr(bytesLen),
-		uintptr(unsafe.Pointer(&buffer[0])),
-	)
-	return buffer
-}
-
-// https://docs.microsoft.com/en-us/windows/win32/api/wingdi/nf-wingdi-getdibits
-// https://docs.microsoft.com/en-us/windows/win32/gdi/capturing-an-image
-func GetDIBits(hdc, hmb, start, cLines, lpvBits, lpbmi, usage uintptr) uintptr {
-	ret, _, _ := getDIBits.Call(
-		hdc,
-		hmb,
-		start,
-		cLines,
-		lpvBits,
-		lpbmi,
-		usage,
-	)
-	return ret
-}
-
-func DeleteObject(hwnd uintptr) {
-	deleteObject.Call(hwnd)
-}
+const (
+	TH32CS_SNAPTHREAD = 0x00000004
+	TH32CS_SNAPMODULE = 0x00000008
+)
 
 func ReleaseDC(hwnd, dc uintptr) {
 	releaseDC.Call(
@@ -254,14 +170,15 @@ func SetWindowPos(hwnd, hWndInsertAfter uintptr, x, y, cx, cy, uFlags int) uintp
 	return ret
 }
 
-func SetStretchBltMode(hdcWindow, HALFTONE uintptr) {
-	setStretchBltMode.Call(hdcWindow, HALFTONE)
-}
+const (
+	GWL_STYLE = -16
 
-func GetObject(h, c, pv uintptr) {
-	getObject.Call(
-		h,
-		c,
-		pv,
-	)
+	WS_CHILD   = 0x40000000
+	WS_VISIBLE = 0x10000000
+)
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winuser/nf-winuser-getwindowlongptrw
+func GetWindowLongPtrW(hwnd uintptr, nIndex int) int {
+	ret, _, _ := getWindowLongPtrW.Call(hwnd, uintptr(nIndex))
+	return int(ret)
 }
