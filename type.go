@@ -1,10 +1,18 @@
 package win32
 
-import "syscall"
+import (
+	"syscall"
+	"unsafe"
+)
 
 func str(s string) *uint16 {
 	p, _ := syscall.UTF16PtrFromString(s)
 	return p
+}
+
+func uintptrStr(s string) uintptr {
+	p, _ := syscall.UTF16PtrFromString(s)
+	return uintptr(unsafe.Pointer(p))
 }
 
 type WideChar string

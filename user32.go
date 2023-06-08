@@ -1,8 +1,11 @@
 package win32
 
 import (
+	"reflect"
 	"syscall"
 	"unsafe"
+
+	"golang.org/x/exp/errors/fmt"
 )
 
 var (
@@ -21,6 +24,7 @@ var (
 	setWindowPos             = user32.NewProc("SetWindowPos")
 	getWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
 	getWindowLongPtrW        = user32.NewProc("GetWindowLongPtrW")
+	createDesktopW           = user32.NewProc("CreateDesktopW")
 )
 
 // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-findwindoww
@@ -65,13 +69,17 @@ func EnumChildWindows(hwnd uintptr, f func(hwnd uintptr, lParam uintptr) uintptr
 
 // https://learn.microsoft.com/zh-cn/windows/win32/api/winuser/nf-winuser-getwindowthreadprocessid
 func GetWindowThreadProcessId(hwnd uintptr) uint32 {
-	ret, _, _ := getWindowThreadProcessId.Call(hwnd)
-	return uint32(ret)
+	var dw DWORD
+	ret, _, _ := getWindowThreadProcessId.Call(hwnd, uintptr(unsafe.Pointer(&dw)))
+	_ = ret // 创建窗口的线程标识符
+	return dw
 }
 
 // https://learn.microsoft.com/zh-cn/windows/win32/api/psapi/nf-psapi-enumprocesses
 
 type long = int32
+type DWORD = uint32
+type Hwnd = uintptr
 
 type Rect struct {
 	Left   long
@@ -86,9 +94,9 @@ func GetClientRect(hwnd uintptr) Rect {
 		hwnd,
 		uintptr(unsafe.Pointer(&rect)),
 	)
+
 	return rect
 }
-
 func GetDC(hwnd uintptr) uintptr {
 	ret, _, _ := getDC.Call(hwnd)
 	return ret
@@ -181,4 +189,128 @@ const (
 func GetWindowLongPtrW(hwnd uintptr, nIndex int) int {
 	ret, _, _ := getWindowLongPtrW.Call(hwnd, uintptr(nIndex))
 	return int(ret)
+}
+
+const (
+	DESKTOP_CREATEMENU      = 0x0004
+	DESKTOP_CREATEWINDOW    = 0x0002
+	DESKTOP_ENUMERATE       = 0x0040
+	DESKTOP_HOOKCONTROL     = 0x0008
+	DESKTOP_JOURNALPLAYBACK = 0x0020
+	DESKTOP_JOURNALRECORD   = 0x0010
+	DESKTOP_READOBJECTS     = 0x0001
+	DESKTOP_SWITCHDESKTOP   = 0x0100
+	DESKTOP_WRITEOBJECTS    = 0x0080
+
+	GENERIC_ALL = DESKTOP_CREATEMENU |
+		DESKTOP_CREATEWINDOW |
+		DESKTOP_ENUMERATE |
+		DESKTOP_HOOKCONTROL |
+		DESKTOP_JOURNALPLAYBACK |
+		DESKTOP_JOURNALRECORD |
+		DESKTOP_READOBJECTS |
+		DESKTOP_SWITCHDESKTOP |
+		DESKTOP_WRITEOBJECTS
+)
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winuser/nf-winuser-createdesktopw
+func CreateDesktopW(desktopName string) uintptr {
+	ret, _, _ := createDesktopW.Call(
+		uintptr(unsafe.Pointer(str(desktopName))),
+		uintptr(unsafe.Pointer(nil)),
+		uintptr(unsafe.Pointer(nil)),
+		0,
+		GENERIC_ALL,
+		uintptr(unsafe.Pointer(nil)),
+	)
+	return ret
+}
+
+var (
+	wincore = syscall.NewLazyDLL("Api-ms-win-core-version-l1-1-0.dll")
+
+	getFileVersionInfoSizeW = wincore.NewProc("GetFileVersionInfoSizeW")
+	getFileVersionInfoW     = wincore.NewProc("GetFileVersionInfoW")
+	verQueryValueW          = wincore.NewProc("VerQueryValueW")
+)
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winver/nf-winver-getfileversioninfosizew
+func GetFileVersionInfoSizeW(filename string) uint32 {
+	var wh uint32
+	size, _, _ := getFileVersionInfoSizeW.Call(
+		uintptrStr(filename),
+		uintptr(unsafe.Pointer(&wh)),
+	)
+	return uint32(size)
+}
+
+const (
+	FILE_VER_GET_LOCALISED  = 0x01
+	FILE_VER_GET_NEUTRAL    = 0x02
+	FILE_VER_GET_PREFETCHED = 0x04
+)
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winver/nf-winver-getfileversioninfow
+func GetFileVersionInfoW(filename string, size uint32, lpData uintptr) bool {
+	var lpd uintptr
+	// var bs = make([]byte, size)
+	ret, _, _ := getFileVersionInfoW.Call(
+		uintptrStr(filename),
+		0,
+		uintptr(size),
+		// lpData,
+		// uintptr(unsafe.Pointer(&lpd)),
+		lpData,
+		// uintptr(unsafe.Pointer(&bs[0])),
+	)
+	fmt.Println("GetFileVersionInfoW,ret:", ret, "size:", size)
+	fmt.Println("lpd:", lpd)
+	// fmt.Println("bs:", bs)
+	return ret > 0
+}
+
+type QueryValueTranslation struct {
+	LangID   uint16
+	CodePage uint16 // Charset
+}
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winver/nf-winver-verqueryvaluew
+func VerQueryValueW(pBlock uintptr, search string, size uint32) bool {
+	// buffer := make([]byte, size)
+	var lp uint32
+	var buffLen uint32
+	ret, _, _ := verQueryValueW.Call(
+		pBlock,
+		uintptrStr(search),
+		// uintptr(unsafe.Pointer(&buffer[0])),
+		uintptr(unsafe.Pointer(&lp)),
+		uintptr(unsafe.Pointer(&buffLen)),
+	)
+	fmt.Println("pBlock", pBlock, "lp:", lp, &lp, uintptr(lp))
+
+	data := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: uintptr(lp),
+		Len:  int(buffLen),
+		Cap:  int(buffLen),
+	}))
+	fmt.Println("data", data)
+	// fmt.Println(buffLen, buffer)
+	// fmt.Println("get", search, buffLen, ret > 0, "str:", string(buffer), WideChar(buffer).Utf8(), buffer[:buffLen*2], WideChar(buffer[:buffLen]).Utf8())
+	return ret > 0
+}
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winver/nf-winver-verqueryvaluew
+func VerQueryValueWTranslation(pBlock uintptr) QueryValueTranslation {
+	trans := QueryValueTranslation{}
+	// var buff = make([]uint8, 200)
+	var buffLen uint32
+	verQueryValueW.Call(
+		pBlock,
+		uintptrStr("\\VarFileInfo\\Translation"),
+		uintptr(unsafe.Pointer(&trans)),
+		uintptr(unsafe.Pointer(&buffLen)),
+	)
+	fmt.Println(buffLen, trans, unsafe.Sizeof(trans))
+	// fmt.Println(buff[:20])
+	return trans
 }
