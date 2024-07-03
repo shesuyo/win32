@@ -1,11 +1,10 @@
 package win32
 
 import (
+	"fmt"
 	"reflect"
 	"syscall"
 	"unsafe"
-
-	"golang.org/x/exp/errors/fmt"
 )
 
 var (
@@ -20,11 +19,13 @@ var (
 	postMessageW             = user32.NewProc("PostMessageW")
 	getWindowTextW           = user32.NewProc("GetWindowTextW")
 	getWindowTextA           = user32.NewProc("GetWindowTextA")
+	getClassNameA            = user32.NewProc("GetClassNameA")
 	getClientRect            = user32.NewProc("GetClientRect")
 	setWindowPos             = user32.NewProc("SetWindowPos")
 	getWindowThreadProcessId = user32.NewProc("GetWindowThreadProcessId")
 	getWindowLongPtrW        = user32.NewProc("GetWindowLongPtrW")
 	createDesktopW           = user32.NewProc("CreateDesktopW")
+	isWindowVisible          = user32.NewProc("IsWindowVisible")
 )
 
 // https://docs.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-findwindoww
@@ -51,6 +52,12 @@ func GetWindowTextW(hwnd uintptr) WideChar {
 func GetWindowTextA(hwnd uintptr) string {
 	str := make([]byte, 200)
 	ret, _, _ := getWindowTextA.Call(hwnd, uintptr(unsafe.Pointer(&str[0])), 200)
+	return string(str[:ret])
+}
+
+func GetClassNameA(hwnd uintptr) string {
+	str := make([]byte, 200)
+	ret, _, _ := getClassNameA.Call(hwnd, uintptr(unsafe.Pointer(&str[0])), 200)
 	return string(str[:ret])
 }
 
@@ -252,20 +259,12 @@ const (
 
 // https://learn.microsoft.com/zh-cn/windows/win32/api/winver/nf-winver-getfileversioninfow
 func GetFileVersionInfoW(filename string, size uint32, lpData uintptr) bool {
-	var lpd uintptr
-	// var bs = make([]byte, size)
 	ret, _, _ := getFileVersionInfoW.Call(
 		uintptrStr(filename),
 		0,
 		uintptr(size),
-		// lpData,
-		// uintptr(unsafe.Pointer(&lpd)),
 		lpData,
-		// uintptr(unsafe.Pointer(&bs[0])),
 	)
-	fmt.Println("GetFileVersionInfoW,ret:", ret, "size:", size)
-	fmt.Println("lpd:", lpd)
-	// fmt.Println("bs:", bs)
 	return ret > 0
 }
 
@@ -275,42 +274,52 @@ type QueryValueTranslation struct {
 }
 
 // https://learn.microsoft.com/zh-cn/windows/win32/api/winver/nf-winver-verqueryvaluew
-func VerQueryValueW(pBlock uintptr, search string, size uint32) bool {
-	// buffer := make([]byte, size)
-	var lp uint32
+func VerQueryValueW(pBlock uintptr, search string) ([]byte, bool) {
+	var lplp uintptr
 	var buffLen uint32
 	ret, _, _ := verQueryValueW.Call(
 		pBlock,
 		uintptrStr(search),
-		// uintptr(unsafe.Pointer(&buffer[0])),
-		uintptr(unsafe.Pointer(&lp)),
+		uintptr(unsafe.Pointer(&lplp)),
 		uintptr(unsafe.Pointer(&buffLen)),
 	)
-	fmt.Println("pBlock", pBlock, "lp:", lp, &lp, uintptr(lp))
-
 	data := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
-		Data: uintptr(lp),
-		Len:  int(buffLen),
-		Cap:  int(buffLen),
+		Data: lplp,
+		Len:  int(buffLen) * 2,
+		Cap:  int(buffLen) * 2,
 	}))
-	fmt.Println("data", data)
-	// fmt.Println(buffLen, buffer)
-	// fmt.Println("get", search, buffLen, ret > 0, "str:", string(buffer), WideChar(buffer).Utf8(), buffer[:buffLen*2], WideChar(buffer[:buffLen]).Utf8())
-	return ret > 0
+	return data, ret > 0
+}
+
+func VerQueryValueWVarFileInfo(pBlock uintptr, trans QueryValueTranslation, field string) string {
+	key := fmt.Sprintf("\\StringFileInfo\\%04x%04x\\FileDescription", trans.LangID, trans.CodePage)
+	bs, _ := VerQueryValueW(pBlock, key)
+	return string(bs)
 }
 
 // https://learn.microsoft.com/zh-cn/windows/win32/api/winver/nf-winver-verqueryvaluew
 func VerQueryValueWTranslation(pBlock uintptr) QueryValueTranslation {
 	trans := QueryValueTranslation{}
-	// var buff = make([]uint8, 200)
+	var lplp uintptr
 	var buffLen uint32
 	verQueryValueW.Call(
 		pBlock,
 		uintptrStr("\\VarFileInfo\\Translation"),
-		uintptr(unsafe.Pointer(&trans)),
+		uintptr(unsafe.Pointer(&lplp)),
 		uintptr(unsafe.Pointer(&buffLen)),
 	)
-	fmt.Println(buffLen, trans, unsafe.Sizeof(trans))
-	// fmt.Println(buff[:20])
+	data := *(*[]byte)(unsafe.Pointer(&reflect.SliceHeader{
+		Data: lplp,
+		Len:  int(buffLen) * 2,
+		Cap:  int(buffLen) * 2,
+	}))
+	trans.LangID = uint16(data[0]) + uint16(data[1])*256
+	trans.CodePage = uint16(data[2]) + uint16(data[3])*256
 	return trans
+}
+
+// https://learn.microsoft.com/zh-cn/windows/win32/api/winuser/nf-winuser-iswindowvisible
+func IsWindowVisible(hwnd uintptr) bool {
+	ret, _, _ := isWindowVisible.Call(hwnd)
+	return ret >= 1
 }
